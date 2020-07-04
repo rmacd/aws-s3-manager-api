@@ -148,7 +148,7 @@ class AWSListFoldersResponse {
         let objects = [];
         for (const object of data) {
             let itemObject = {
-                name: object.Prefix.replace(/\/$/, ''),
+                name: object.Prefix.replace(/\/$/, '').replace(/^.*[\\\/]/, ''),
                 object_key: object.Prefix,
                 type: "folder"
             };
