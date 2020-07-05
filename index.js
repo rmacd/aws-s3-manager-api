@@ -14,8 +14,10 @@ var AWS = require('aws-sdk');
 // for debug - inspections only
 const util = require('util');
 
+// todo make region configurable
+
 // AWS setup
-const aws_s3 = new AWS.S3({apiVersion: '2006-03-01'});
+const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: 'eu-west-2'});
 const aws_s3Params = {
     Bucket: process.env.AWS_BUCKET || 'rsviolin' // 'quackophage'
 };
@@ -31,13 +33,20 @@ app.get('/debug', async (req, res) => {
     debugger;
 });
 
-function getDownloadLink(object_key) {
-    let params = Object.assign({Key: object_key, Expires: 60}, aws_s3Params);
-    console.log("GET ", params, "(signed link)");
-    let signedURL = aws_s3.getSignedUrl(
-        'getObject', params
-    );
-    return {signedLink: signedURL};
+function generateSignedLink(object_key) {
+    return new Promise(((resolve, reject) => {
+        let params = Object.assign({Key: object_key, Expires: 60}, aws_s3Params);
+        console.log("GET ", params, "(signed link)");
+        aws_s3.getSignedUrl(
+            'getObject', params, ((err, url) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve({signedLink: url});
+                }
+            })
+        );
+    }));
 }
 
 app.get('/api/items', async function (req, res) {
@@ -46,7 +55,9 @@ app.get('/api/items', async function (req, res) {
     let delimiter = '/';
 
     if (req.query.download !== undefined) {
-        await res.json(getDownloadLink(decodeURIComponent(req.query.download)));
+        const signedLink = await generateSignedLink(decodeURIComponent(req.query.download));
+        await res.json(signedLink);
+        return;
     }
 
     let params = Object.assign({Delimiter: delimiter, Prefix: queryPath}, aws_s3Params);
