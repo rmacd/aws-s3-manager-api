@@ -31,21 +31,33 @@ app.get('/debug', async (req, res) => {
     debugger;
 });
 
+function getDownloadLink(object_key) {
+    let params = Object.assign({Key: object_key, Expires: 60}, aws_s3Params);
+    console.log("GET ", params, "(signed link)");
+    let signedURL = aws_s3.getSignedUrl(
+        'getObject', params
+    );
+    return {signedLink: signedURL};
+}
+
 app.get('/api/items', async function (req, res) {
     let getACL = (req.query.getACL !== undefined);
-
     let queryPath = req.query.path;
     let delimiter = '/';
 
-    const params = Object.assign({Delimiter: delimiter, Prefix: queryPath}, aws_s3Params);
+    if (req.query.download !== undefined) {
+        await res.json(getDownloadLink(decodeURIComponent(req.query.download)));
+    }
+
+    let params = Object.assign({Delimiter: delimiter, Prefix: queryPath}, aws_s3Params);
     console.log(req.method, req.path, params, {getACL: getACL});
 
-    const objectList = await getObjects(params);
+    let objectList = await getObjects(params);
 
     objectList.queryPath = (undefined !== queryPath) ? queryPath : '';
 
     if (getACL) {
-        const objectACLList = await populateACL(objectList);
+        let objectACLList = await populateACL(objectList);
         await res.json(objectACLList);
     } else {
         await res.json(objectList);
@@ -76,8 +88,8 @@ function getObjects(params) {
 }
 
 function populateACL(objectList) {
-    return new Promise( async(resolve, reject) => {
-        for (const obj of objectList.objects) {
+    return new Promise(async (resolve, reject) => {
+        for (let obj of objectList.objects) {
             if (obj.type === "object") {
                 obj.is_public = await obj_isPublic(obj.object_key);
             }
@@ -87,7 +99,7 @@ function populateACL(objectList) {
 }
 
 function obj_isPublic(object_key) {
-    const params = Object.assign({Key: object_key}, aws_s3Params);
+    let params = Object.assign({Key: object_key}, aws_s3Params);
     return aws_s3.getObjectAcl(params, function (err, data) {
         if (err) {
             console.log(params, err, err.stack);
@@ -96,7 +108,7 @@ function obj_isPublic(object_key) {
             return data;
         }
     }).promise().then(value => {
-        const acl = hasPublicGrant(value.Grants);
+        let acl = hasPublicGrant(value.Grants);
         console.log(object_key, {ACL: acl});
         return acl;
     });
@@ -128,7 +140,7 @@ class AWSListBucketResponse {
 class AWSListObjectsResponse {
     constructor(data) {
         let objects = [];
-        for (const object of data.Contents) {
+        for (let object of data.Contents) {
             let itemObject = {
                 object_key: object.Key,
                 name: object.Key.replace(/^.*[\\\/]/, ''),
@@ -146,7 +158,7 @@ class AWSListObjectsResponse {
 class AWSListFoldersResponse {
     constructor(data, params) {
         let objects = [];
-        for (const object of data) {
+        for (let object of data) {
             let itemObject = {
                 name: object.Prefix.replace(/\/$/, '').replace(/^.*[\\\/]/, ''),
                 object_key: object.Prefix,
