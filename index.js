@@ -58,13 +58,12 @@ function setVisibility(object_key, is_public) {
     return new Promise((((resolve, reject) => {
         let aclString = (is_public) ? 'public-read' : 'private';
         let params = Object.assign({Key: object_key, ACL: aclString}, aws_s3Params);
-        console.log(params);
-        let response = aws_s3.putObjectAcl(params, ((err, res) => {
+        aws_s3.putObjectAcl(params, ((err, res) => {
             if (err) {
-                reject(err);
+                reject(false);
             } else {
                 console.log(res);
-                resolve(res);
+                resolve(false);
             }
         }));
     })));
@@ -74,9 +73,12 @@ app.put('/api/items', jsonParser, async function (req, res) {
     if (req.body !== undefined && req.body.item !== undefined && req.body.is_public !== undefined) {
         const setACL = await setVisibility(decodeURIComponent(req.body.item), req.body.is_public);
         console.log("called setACL", setACL);
-        await res.status(202);
+        if (setACL) {
+            // only if it was successful
+            res.status(202);
+        }
     }
-    await res.status(400);
+    res.status(400);
 });
 
 app.get('/api/items', async function (req, res) {
