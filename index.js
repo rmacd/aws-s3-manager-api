@@ -1,18 +1,23 @@
 // global params
 var AWS_BUCKET = process.env.AWS_BUCKET || 'quackophage';
 
+var AWS = require('aws-sdk');
 const aws_s3URI_allUsers = "http://acs.amazonaws.com/groups/global/AllUsers";
+
+// for debug - inspections only
+const util = require('util');
+
+// cache responses from AWS
+const NodeCache = require("node-cache");
+const cache = new NodeCache();
 
 const express = require('express');
 const path = require('path');
 const app = express();
-const NodeCache = require("node-cache");
-const cache = new NodeCache();
-var AWS = require('aws-sdk');
-// AWS.config.update({region: 'us-west-2'});
 
-// for debug - inspections only
-const util = require('util');
+// set up parser for PUT/POST requests
+const bodyParser = require('body-parser');
+let jsonParser = bodyParser.json();
 
 // todo make region configurable
 
@@ -49,8 +54,29 @@ function generateSignedLink(object_key) {
     }));
 }
 
-app.put('/api/items', async function(req, res) {
-    res.status(202).send('true');
+function setVisibility(object_key, is_public) {
+    return new Promise((((resolve, reject) => {
+        let aclString = (is_public) ? 'public-read' : 'private';
+        let params = Object.assign({Key: object_key, ACL: aclString}, aws_s3Params);
+        console.log(params);
+        let response = aws_s3.putObjectAcl(params, ((err, res) => {
+            if (err) {
+                reject(err);
+            } else {
+                console.log(res);
+                resolve(res);
+            }
+        }));
+    })));
+}
+
+app.put('/api/items', jsonParser, async function (req, res) {
+    if (req.body !== undefined && req.body.item !== undefined && req.body.is_public !== undefined) {
+        const setACL = await setVisibility(decodeURIComponent(req.body.item), req.body.is_public);
+        console.log("called setACL", setACL);
+        await res.status(202);
+    }
+    await res.status(400);
 });
 
 app.get('/api/items', async function (req, res) {
