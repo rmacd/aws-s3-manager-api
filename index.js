@@ -49,6 +49,10 @@ function generateSignedLink(object_key) {
     }));
 }
 
+app.put('/api/items', async function(req, res) {
+    res.status(202).send('true');
+});
+
 app.get('/api/items', async function (req, res) {
     let getACL = (req.query.getACL !== undefined);
     let queryPath = req.query.path;
