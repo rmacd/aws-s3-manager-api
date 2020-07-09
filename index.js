@@ -19,6 +19,10 @@ const app = express();
 const bodyParser = require('body-parser');
 let jsonParser = bodyParser.json();
 
+// process multipart
+var multipart = require('connect-multiparty');
+var multipartMiddleware = multipart();
+
 // todo make region configurable
 
 // AWS setup
@@ -38,7 +42,7 @@ const _csrf_key = '_csrf-aws-s3mgr';
 app.use(csurf({
     cookie: {
         key: _csrf_key,
-        path: '/api',
+        path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'prd',
         maxAge: 3600
@@ -47,14 +51,23 @@ app.use(csurf({
 app.use(function (req, res, next) {
     if (!req.cookies[_csrf_key]) return next();
     res.setHeader('Set-Cookie', [
-        'XSRF-TOKEN='+ req.csrfToken() + ';' +
-        'path=/'
+        `XSRF-TOKEN=${req.csrfToken()};path=/`
     ]);
     next();
 });
 
 app.get('/api/version', (req, res) => {
     res.json({version: 1, bucket: aws_s3Params.Bucket});
+});
+
+app.post('/api/upload', multipartMiddleware, (req, res) => {
+    console.log("path", req.query);
+    console.log(req.body, req.files);
+
+    // req.body.path and req.files.file.path
+    console.log({path: req.body.path, temp: req.files.file.path, key: req.body.path + req.files.file.name});
+
+    res.status(201).send();
 });
 
 app.get('/debug', async (req, res) => {
@@ -97,7 +110,6 @@ app.put('/api/items', jsonParser, async function (req, res) {
         console.log("called setACL", setACL);
         if (setACL) {
             // only if it was successful
-            console.log('returning response');
             await res.status(202).send();
         }
         else {
