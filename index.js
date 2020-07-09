@@ -24,14 +24,37 @@ let jsonParser = bodyParser.json();
 // AWS setup
 const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: 'eu-west-2'});
 const aws_s3Params = {
-    Bucket: process.env.AWS_BUCKET || 'rsviolin' // 'quackophage'
+    Bucket: process.env.AWS_BUCKET || 'rmacd-testbucket'
 };
 
 // Serve the static files from the React app
 app.use(express.static(path.join(__dirname, 'fe/build')));
+// set up CSRF
+
+const cookieParser = require('cookie-parser');
+const csurf = require('csurf');
+app.use(cookieParser());
+const _csrf_key = '_csrf-aws-s3mgr';
+app.use(csurf({
+    cookie: {
+        key: _csrf_key,
+        path: '/api',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'prd',
+        maxAge: 3600
+    }
+}));
+app.use(function (req, res, next) {
+    if (!req.cookies[_csrf_key]) return next();
+    res.setHeader('Set-Cookie', [
+        'XSRF-TOKEN='+ req.csrfToken() + ';' +
+        'path=/'
+    ]);
+    next();
+});
 
 app.get('/api/version', (req, res) => {
-    res.json({version: 1});
+    res.json({version: 1, bucket: aws_s3Params.Bucket});
 });
 
 app.get('/debug', async (req, res) => {
@@ -58,14 +81,13 @@ function setVisibility(object_key, is_public) {
     return new Promise((((resolve, reject) => {
         let aclString = (is_public) ? 'public-read' : 'private';
         let params = Object.assign({Key: object_key, ACL: aclString}, aws_s3Params);
-        aws_s3.putObjectAcl(params, ((err, res) => {
+        aws_s3.putObjectAcl(params, (err, res) => {
             if (err) {
                 reject(false);
             } else {
-                console.log(res);
-                resolve(false);
+                resolve(true);
             }
-        }));
+        });
     })));
 }
 
@@ -75,10 +97,13 @@ app.put('/api/items', jsonParser, async function (req, res) {
         console.log("called setACL", setACL);
         if (setACL) {
             // only if it was successful
-            res.status(202);
+            console.log('returning response');
+            await res.status(202).send();
+        }
+        else {
+            await res.status(500).send();
         }
     }
-    res.status(400);
 });
 
 app.get('/api/items', async function (req, res) {
@@ -114,7 +139,7 @@ app.get('*', (req, res) => {
 
 const port = process.env.PORT || 5000;
 app.listen(port);
-console.log('App is listening on port ' + port);
+console.log("App is listening on port", port);
 
 function getObjects(params) {
     return new Promise((resolve, reject) => {
