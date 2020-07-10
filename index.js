@@ -114,8 +114,7 @@ function deleteObject(object_key) {
             if (err) {
                 console.log(err);
                 reject(err);
-            }
-            else {
+            } else {
                 resolve(data);
             }
         }))
@@ -127,8 +126,7 @@ app.delete('/api/items', jsonParser, async function (req, res) {
         const delObj = await deleteObject(decodeURIComponent(req.query.object_key));
         if (delObj) {
             await res.status(200).send();
-        }
-        else {
+        } else {
             await res.status(500).send();
         }
     }
@@ -161,17 +159,20 @@ app.get('/api/items', async function (req, res) {
     }
 });
 
-// Handles any requests that don't match the ones above
-// app.get('*', (req, res) => {
-//     res.sendFile(path.join(__dirname + '/fe/build/index.html'));
-// });
-
-var proxy = require('express-http-proxy');
-app.use('/', proxy('127.0.0.1:3000'));
+if (process.env.NODE_ENV === 'prd') {
+    // unmatched request: return index.html
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname + '/fe/build/index.html'));
+    });
+} else {
+    console.log("NODE_ENV not set to 'prd', expecting to find React (dev) listening on 3000");
+    var proxy = require('express-http-proxy');
+    app.use('/', proxy('127.0.0.1:3000'));
+}
 
 const port = process.env.PORT || 5000;
 app.listen(port);
-console.log("App is listening on port", port);
+console.log("Express is listening on port", port);
 
 function getObjects(params) {
     return new Promise((resolve, reject) => {
@@ -254,23 +255,6 @@ async function uploadAndUnlinkObject(file_path, object_key, content_type) {
                 console.log(reason, reason.stack);
             });
     })
-
-    // console.log("complete", value);
-    // console.log("unlinking", file_path);
-    // fs.unlink(file_path, function () {
-    //     console.log("deleted", file_path);
-    // });
-
-    // let resp = await aws_s3.putObject(params, function (err, data) {
-    //     if (err) {
-    //         console.log(params, err, err.stack);
-    //     } else {
-    //         return data;
-    //     }
-    // });
-    // fs.unlink(file_path, function () {
-    //     console.log("deleted", file_path);
-    // });
 }
 
 function hasPublicGrant(grants) {
@@ -290,8 +274,12 @@ class AWSListBucketResponse {
         this.bucket = data.Name;
         this.truncated = data.IsTruncated;
         let _01 = [];
-        new AWSListFoldersResponse(data.CommonPrefixes).getObjects().forEach(val => {_01.push(val)});
-        new AWSListObjectsResponse(data).getObjects().forEach(val => {_01.push(val)});
+        new AWSListFoldersResponse(data.CommonPrefixes).getObjects().forEach(val => {
+            _01.push(val)
+        });
+        new AWSListObjectsResponse(data).getObjects().forEach(val => {
+            _01.push(val)
+        });
         this.objects = _01;
     }
 }
@@ -311,6 +299,7 @@ class AWSListObjectsResponse {
             }
         }
     }
+
     getObjects() {
         return this.objects;
     }
@@ -328,6 +317,7 @@ class AWSListFoldersResponse {
             this.objects.push(itemObject);
         }
     }
+
     getObjects() {
         return this.objects;
     }
