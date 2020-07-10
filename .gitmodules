@@ -1,4 +1,0 @@
-[submodule "fe"]
-	path = fe
-	url = git@github.com:rmacd/aws-s3-manager-ui.git
-	branch = master
