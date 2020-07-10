@@ -1,7 +1,8 @@
 {
-  "name": "s3-upload",
+  "name": "aws-s3-mgr-api",
   "version": "1.0.0",
-  "description": "S3 upload interface",
+  "repository": "https://github.com/rmacd/aws-s3-manager-api",
+  "description": "API for Docker-based AWS S3 interface",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
