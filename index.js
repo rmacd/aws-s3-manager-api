@@ -82,7 +82,7 @@ function generateSignedLink(object_key) {
 }
 
 function setVisibility(object_key, is_public) {
-    return new Promise((((resolve, reject) => {
+    return new Promise((resolve, reject) => {
         let aclString = (is_public) ? 'public-read' : 'private';
         let params = Object.assign({Key: object_key, ACL: aclString}, aws_s3Params);
         aws_s3.putObjectAcl(params, (err, res) => {
@@ -92,13 +92,12 @@ function setVisibility(object_key, is_public) {
                 resolve(true);
             }
         });
-    })));
+    });
 }
 
 app.put('/api/items', jsonParser, async function (req, res) {
     if (req.body !== undefined && req.body.item !== undefined && req.body.is_public !== undefined) {
         const setACL = await setVisibility(decodeURIComponent(req.body.item), req.body.is_public);
-        console.log("called setACL", setACL);
         if (setACL) {
             // only if it was successful
             await res.status(202).send();
@@ -106,6 +105,34 @@ app.put('/api/items', jsonParser, async function (req, res) {
             await res.status(500).send();
         }
     }
+});
+
+function deleteObject(object_key) {
+    return new Promise((resolve, reject) => {
+        let params = Object.assign({Key: object_key}, aws_s3Params);
+        aws_s3.deleteObject(params, ((err, data) => {
+            if (err) {
+                console.log(err);
+                reject(err);
+            }
+            else {
+                resolve(data);
+            }
+        }))
+    })
+}
+
+app.delete('/api/items', jsonParser, async function (req, res) {
+    if (req.query.object_key !== undefined) {
+        const delObj = await deleteObject(decodeURIComponent(req.query.object_key));
+        if (delObj) {
+            await res.status(200).send();
+        }
+        else {
+            await res.status(500).send();
+        }
+    }
+    await res.status(400).send();
 });
 
 app.get('/api/items', async function (req, res) {
