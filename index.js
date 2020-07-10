@@ -181,7 +181,6 @@ function getObjects(params) {
                 console.log("error", err);
                 reject(err);
             } else {
-                console.log(data);
                 resolve(new AWSListBucketResponse(data, params));
             }
         })
