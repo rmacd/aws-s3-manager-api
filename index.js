@@ -46,7 +46,7 @@ const aws_region = process.env.AWS_REGION || 'eu-west-2';
 const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: aws_region});
 
 // Serve the static files from the React app
-app.use(express.static(path.join('/opt/s3mgr/fe/build')));
+app.use(express.static(path.join(__dirname, 'fe')));
 
 app.get('/api/version', (req, res) => {
     res.json({version: 1, bucket: aws_s3Params.Bucket});
@@ -166,7 +166,7 @@ if (process.env.NODE_ENV === 'dev') {
 } else {
     // unmatched request: return index.html
     app.get('*', (req, res) => {
-        res.sendFile(path.join('/opt/s3mgr/fe/build/index.html'));
+        res.sendFile(path.join(__dirname + '/fe/index.html'));
     });
 }
 

@@ -1,5 +1,6 @@
 {
-  "name": "s3-upload",
+  "name": "aws-s3-manager-ui",
+  "repository": "https://github.com/rmacd/aws-s3-manager-ui",
   "version": "1.0.0",
   "description": "S3 upload interface",
   "main": "index.js",
