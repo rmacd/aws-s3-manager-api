@@ -39,14 +39,14 @@ var multipart = require('connect-multiparty');
 var multipartMiddleware = multipart();
 
 // AWS setup
-// todo make region configurable
-const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: 'eu-west-2'});
 const aws_s3Params = {
-    Bucket: process.env.AWS_BUCKET || 'rmacd-testbucket'
+    Bucket: process.env.AWS_BUCKET || ''
 };
+const aws_region = process.env.AWS_REGION || 'eu-west-2';
+const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: aws_region});
 
 // Serve the static files from the React app
-app.use(express.static(path.join(__dirname, 'fe/build')));
+app.use(express.static(path.join('/opt/s3mgr/fe/build')));
 
 app.get('/api/version', (req, res) => {
     res.json({version: 1, bucket: aws_s3Params.Bucket});
@@ -159,15 +159,15 @@ app.get('/api/items', async function (req, res) {
     }
 });
 
-if (process.env.NODE_ENV === 'prd') {
-    // unmatched request: return index.html
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname + '/fe/build/index.html'));
-    });
-} else {
-    console.log("NODE_ENV not set to 'prd', expecting to find React (dev) listening on 3000");
+if (process.env.NODE_ENV === 'dev') {
+    console.log("NODE_ENV set to 'dev', expecting to find React (dev) listening on 3000");
     var proxy = require('express-http-proxy');
     app.use('/', proxy('127.0.0.1:3000'));
+} else {
+    // unmatched request: return index.html
+    app.get('*', (req, res) => {
+        res.sendFile(path.join('/opt/s3mgr/fe/build/index.html'));
+    });
 }
 
 const port = process.env.PORT || 5000;

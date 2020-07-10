@@ -17,5 +17,5 @@ Once running, open Chrome tools at `chrome://inspect`.
 
 ### Note
 
-When `NODE_ENV` is not set to 'prd', the API proxies requests that don't match through to the React backend.
+When `NODE_ENV` is set to 'dev', the API proxies requests that don't match through to the React backend, which by default listens on port 3000.
 
