@@ -4,6 +4,9 @@ var AWS_BUCKET = process.env.AWS_BUCKET || 'quackophage';
 var AWS = require('aws-sdk');
 const aws_s3URI_allUsers = "http://acs.amazonaws.com/groups/global/AllUsers";
 
+const fs = require('fs');
+crypt = require('crypto');
+
 // for debug - inspections only
 const util = require('util');
 
@@ -15,6 +18,18 @@ const express = require('express');
 const path = require('path');
 const app = express();
 
+// set up CSRF
+const cookieParser = require('cookie-parser');
+const csurf = require('csurf');
+app.use(cookieParser());
+app.use(csurf({cookie: {key: '_csrf', maxAge: 3600}}));
+
+app.use(function (req, res, next) {
+    var token = req.csrfToken();
+    res.cookie('_csrf-aws-s3mgr', token);
+    next();
+});
+
 // set up parser for PUT/POST requests
 const bodyParser = require('body-parser');
 let jsonParser = bodyParser.json();
@@ -23,9 +38,8 @@ let jsonParser = bodyParser.json();
 var multipart = require('connect-multiparty');
 var multipartMiddleware = multipart();
 
-// todo make region configurable
-
 // AWS setup
+// todo make region configurable
 const aws_s3 = new AWS.S3({apiVersion: '2006-03-01', signatureVersion: 'v4', region: 'eu-west-2'});
 const aws_s3Params = {
     Bucket: process.env.AWS_BUCKET || 'rmacd-testbucket'
@@ -33,40 +47,17 @@ const aws_s3Params = {
 
 // Serve the static files from the React app
 app.use(express.static(path.join(__dirname, 'fe/build')));
-// set up CSRF
-
-const cookieParser = require('cookie-parser');
-const csurf = require('csurf');
-app.use(cookieParser());
-const _csrf_key = '_csrf-aws-s3mgr';
-app.use(csurf({
-    cookie: {
-        key: _csrf_key,
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'prd',
-        maxAge: 3600
-    }
-}));
-app.use(function (req, res, next) {
-    if (!req.cookies[_csrf_key]) return next();
-    res.setHeader('Set-Cookie', [
-        `XSRF-TOKEN=${req.csrfToken()};path=/`
-    ]);
-    next();
-});
 
 app.get('/api/version', (req, res) => {
     res.json({version: 1, bucket: aws_s3Params.Bucket});
 });
 
-app.post('/api/upload', multipartMiddleware, (req, res) => {
-    console.log("path", req.query);
-    console.log(req.body, req.files);
-
-    // req.body.path and req.files.file.path
-    console.log({path: req.body.path, temp: req.files.file.path, key: req.body.path + req.files.file.name});
-
+app.post('/api/upload', multipartMiddleware, async (req, res) => {
+    let temp_path = req.files.file.path;
+    let object_key = req.body.path + req.files.file.name;
+    let content_type = req.files.file.headers['content-type'];
+    console.log(`Uploading ${temp_path} (object_key: ${object_key})`);
+    await uploadAndUnlinkObject(temp_path, object_key, content_type);
     res.status(201).send();
 });
 
@@ -111,8 +102,7 @@ app.put('/api/items', jsonParser, async function (req, res) {
         if (setACL) {
             // only if it was successful
             await res.status(202).send();
-        }
-        else {
+        } else {
             await res.status(500).send();
         }
     }
@@ -145,9 +135,12 @@ app.get('/api/items', async function (req, res) {
 });
 
 // Handles any requests that don't match the ones above
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname + '/fe/build/index.html'));
-});
+// app.get('*', (req, res) => {
+//     res.sendFile(path.join(__dirname + '/fe/build/index.html'));
+// });
+
+var proxy = require('express-http-proxy');
+app.use('/', proxy('127.0.0.1:3000'));
 
 const port = process.env.PORT || 5000;
 app.listen(port);
@@ -169,6 +162,7 @@ function getObjects(params) {
 
 function populateACL(objectList) {
     return new Promise(async (resolve, reject) => {
+        debugger;
         for (let obj of objectList.objects) {
             if (obj.type === "object") {
                 obj.is_public = await obj_isPublic(obj.object_key);
@@ -184,7 +178,6 @@ function obj_isPublic(object_key) {
         if (err) {
             console.log(params, err, err.stack);
         } else {
-            // console.log(util.inspect(data, {depth: 4}));
             return data;
         }
     }).promise().then(value => {
@@ -192,6 +185,65 @@ function obj_isPublic(object_key) {
         console.log(object_key, {ACL: acl});
         return acl;
     });
+}
+
+function doUpload(params) {
+    return new Promise(async (resolve, reject) => {
+        aws_s3.putObject(params, function (err, data) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(data)
+            }
+        });
+    });
+}
+
+async function uploadAndUnlinkObject(file_path, object_key, content_type) {
+    fs.readFile(file_path, function (err, data) {
+        if (err) {
+            console.log(err);
+            throw err;
+        }
+        let fileData = new Buffer.from(data, 'binary');
+        let fileHash = crypt.createHash('md5')
+            .update(fileData)
+            .digest('base64');
+
+        let params = Object.assign({
+            Key: object_key,
+            Body: fileData,
+            ContentMD5: fileHash,
+            ContentType: (undefined === content_type) ? 'binary' : content_type
+        }, aws_s3Params);
+        let uploadResponse = doUpload(params)
+            .then(response => {
+                console.log("Response", object_key, response);
+                fs.unlink(file_path, function () {
+                    console.log("Unlinked", file_path);
+                });
+            })
+            .catch((reason) => {
+                console.log(reason, reason.stack);
+            });
+    })
+
+    // console.log("complete", value);
+    // console.log("unlinking", file_path);
+    // fs.unlink(file_path, function () {
+    //     console.log("deleted", file_path);
+    // });
+
+    // let resp = await aws_s3.putObject(params, function (err, data) {
+    //     if (err) {
+    //         console.log(params, err, err.stack);
+    //     } else {
+    //         return data;
+    //     }
+    // });
+    // fs.unlink(file_path, function () {
+    //     console.log("deleted", file_path);
+    // });
 }
 
 function hasPublicGrant(grants) {
@@ -210,16 +262,16 @@ class AWSListBucketResponse {
     constructor(data) {
         this.bucket = data.Name;
         this.truncated = data.IsTruncated;
-        this.objects = Object.assign(
-            new AWSListFoldersResponse(data.CommonPrefixes),
-            new AWSListObjectsResponse(data)
-        );
+        let _01 = [];
+        new AWSListFoldersResponse(data.CommonPrefixes).getObjects().forEach(val => {_01.push(val)});
+        new AWSListObjectsResponse(data).getObjects().forEach(val => {_01.push(val)});
+        this.objects = _01;
     }
 }
 
 class AWSListObjectsResponse {
     constructor(data) {
-        let objects = [];
+        this.objects = [];
         for (let object of data.Contents) {
             let itemObject = {
                 object_key: object.Key,
@@ -228,24 +280,28 @@ class AWSListObjectsResponse {
                 type: "object",
             };
             if (data.Prefix === undefined || data.Prefix !== object.Key) {
-                objects.push(itemObject);
+                this.objects.push(itemObject);
             }
         }
-        return objects;
+    }
+    getObjects() {
+        return this.objects;
     }
 }
 
 class AWSListFoldersResponse {
-    constructor(data, params) {
-        let objects = [];
+    constructor(data) {
+        this.objects = [];
         for (let object of data) {
             let itemObject = {
                 name: object.Prefix.replace(/\/$/, '').replace(/^.*[\\\/]/, ''),
                 object_key: object.Prefix,
                 type: "folder"
             };
-            objects.push(itemObject);
+            this.objects.push(itemObject);
         }
-        return objects;
+    }
+    getObjects() {
+        return this.objects;
     }
 }
